@@ -38,37 +38,73 @@ description: Google Apps Script 기반 자동화 및 웹앱 제작을 위한 기
 - **최초 권한 승인 안내**: "고급 > [프로젝트 이름]으로 이동(안전하지 않음) > 허용" 과정을 반드시 경고하고 친절하게 설명합니다.
 - 웹앱 배포 또는 트리거 설정이 필요한 경우 해당 과정도 초보자 눈높이에 맞춰 클릭 단계별로 명확하게 설명합니다.
 
+---
+
 # GAS 개발 가이드라인 (필수 준수 사항)
 
 코드 생성 시 반드시 아래의 Apps Script 특화 규칙을 반영해야 합니다:
 
-1. **클라이언트-서버 통신 제한 (Public vs Private 함수)**
-   - `google.script.run`을 통해 클라이언트(HTML)에서 호출되는 서버 함수는 이름 끝에 밑줄(`_`)이 **없어야 합니다**. (예: `doWork_()` (X) -> `doWork()` (O))
-   - 메뉴 아이템에 참조되는 함수 역시 Public 이어야 합니다.
+### 1. 표준 스크립트 구조 Template 준수
+모든 서버 사이드 스크립트(`Code.gs`)는 아래 형식을 따라야 합니다.
+```javascript
+/**
+ * [프로젝트 이름] - [간단한 설명]
+ *
+ * [주요 특징 및 기능 설명]
+ *
+ * 설치 방법: 확장 프로그램 > Apps Script > 코드 붙여넣기 > 저장 > 시트 새로고침
+ */
 
-2. **배치 처리 (성능 최적화 - 가장 중요)**
-   - 셀 단위의 읽기/쓰기는 절대 피하십시오. 반복문 안에서 `getValue()`/`setValue()`를 사용하면 심각한 성능 저하가 발생합니다.
-   - 반드시 `getRange().getValues()`와 `setValues()`를 사용하여 데이터를 메모리에 올려 한 번에 처리해야 합니다.
+// --- CONFIGURATION (설정 상수) ---
+const CONFIG_KEY = 'VALUE';
 
-3. **상태 동기화 (Flush)**
-   - 시트를 수정하는 함수가 종료되기 직전(특히 HTML 다이얼로그나 사이드바에서 서버 함수를 호출한 경우)에는 반드시 `SpreadsheetApp.flush()`를 호출하여 변경사항이 즉각 반영되게 합니다.
+// --- MENU SETUP (메뉴 구성) ---
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('🛠️ 학급 관리 도구')
+    .addItem('기능 실행', 'executeAction')
+    .addToUi();
+}
 
-4. **트리거(Triggers)의 분리**
-   - 단순 UI 반응(예: 특정 셀 편집 시 타임스탬프 기록)은 권한이 필요 없는 `onEdit(e)` 심플 트리거를 사용합니다.
-   - 이메일 발송, 외부 API 연동(Fetch), 다른 파일 접근 등 권한이 필요한 작업은 반드시 Installable Trigger (`ScriptApp.newTrigger()`)를 사용하도록 구현합니다.
+// --- MAIN FUNCTIONS ---
+function executeAction() {
+  // 실제 로직 구현
+}
+```
 
-5. **최신 V8 런타임 문법 사용 및 주의점**
-   - `const`, `let`, 화살표 함수 등 최신 자바스크립트 문법을 사용합니다.
-   - `setTimeout`이나 `setInterval`은 사용할 수 없으므로(HTML 내부가 아닌 Server Code에서), 서버 딜레이가 필요하면 `Utilities.sleep(ms)`를 사용합니다.
-   - `fetch` 대신 `UrlFetchApp.fetch()`를 사용합니다.
+### 2. 클라이언트-서버 통신 제한 (Public vs Private 함수)
+- `google.script.run`을 통해 클라이언트(HTML)에서 호출되는 서버 함수는 이름 끝에 밑줄(`_`)이 **없어야 합니다**. (예: `doWork_()` (X) -> `doWork()` (O))
+- 밑줄(`_`)로 끝나는 함수는 Private 처리되어 HTML 클라이언트에서 호출 시 에러 없이 침묵하며 실패(Silent Failure)합니다.
+- 메뉴 아이템에 문자열로 매핑되는 함수 역시 반드시 Public 이어야 합니다.
 
-6. **UI 피드백 및 에러 처리**
-   - 완료 알림은 `SpreadsheetApp.getActiveSpreadsheet().toast('메시지', '제목', 5)` 등을 적극 활용합니다.
-   - 외부 API 연동 시 `muteHttpExceptions: true`를 적용하고 `try/catch`로 감싸 명확한 에러 메시지를 반환합니다.
-   - 오래 걸리는 작업은 가급적 HTML 모달(Progress Dialog) 스피너를 띄워 중복 실행을 막고 진행 상황을 보여줍니다.
+### 3. 배치 처리 (성능 최적화 - 가장 중요)
+- 셀 단위의 개별 읽기/쓰기는 절대 피하십시오. 반복문 안에서 `getValue()`/`setValue()`를 사용하면 실행 속도가 70배 이상 느려집니다.
+- 반드시 `getRange().getValues()`와 `setValues()`를 사용해 2차원 배열 형태로 데이터를 한 번에 가져오고 내보냅니다.
 
-# 상세 행동 규칙
-1. **대화 주도**: 질문은 한 번에 1~2개씩만 던져서 사용자가 부담을 느끼지 않게 합니다.
-2. **쉬운 용어 사용**: 일반 사용자 대상이므로 전문 개발 용어는 사용 목적과 함께 쉽게 풀어 설명합니다.
-3. **코드 완성도**: 생성되는 코드는 뼈대가 아닌 바로 실행 가능한 프로덕션 레벨이어야 합니다.
-4. **워크스페이스 쓰기 권한**: 파일을 직접 생성하는 도구를 적극적으로 활용하여 사용자 워크스페이스에 결과물을 저장합니다.
+### 4. 상태 동기화 (Flush)
+- 시트 데이터를 수정하는 함수가 종료되기 직전(특히 HTML 다이얼로그나 사이드바에서 서버 함수를 호출한 경우)에는 반드시 `SpreadsheetApp.flush()`를 호출하여 변경사항이 화면 및 파일에 즉각 물리적으로 반영되게 합니다.
+
+### 5. Simple vs Installable Triggers 적절한 구분 사용
+- **단순 트리거 (`onEdit(e)`)**: 인증이 불필요한 가벼운 셀 편집 자동 작업에만 사용합니다. 단순 트리거는 이메일 전송, 외부 API 호출, 타 파일 접근, 다이얼로그 열기 권한이 없습니다.
+- **설치용 트리거 (`ScriptApp.newTrigger()`)**: 이메일 전송, URL Fetch, 외부 자원 접근 등 권한이 요구될 때는 반드시 에디터나 코드를 통한 '설치용 트리거'를 생성하도록 안내해야 합니다.
+
+### 6. 커스텀 시트 함수 (`=MY_FUNCTION()`) 제약 사항
+- 사용자가 스프레드시트 셀 내부에서 수식으로 호출하는 커스텀 함수를 생성할 때는 반드시 JSDoc 태그인 `@customfunction`을 명시해야 합니다.
+- 커스텀 함수는 **최대 30초**의 실행 한계를 가집니다 (일반 함수는 6분).
+- 커스텀 함수 내부에서는 이메일 발송(`MailApp`), 외부 통신(`UrlFetchApp`), UI 다이얼로그 팝업을 띄울 수 없습니다.
+
+### 7. V8 런타임 문법 사용 및 누락 API 대처
+- `const`, `let`, Arrow functions, Template literals 등 모던 ES6+ 문법을 활용합니다.
+- 서버 측에서는 웹 브라우저의 일부 API가 차단되므로 다음 대체제를 사용해야 합니다:
+  - `setTimeout` / `setInterval` ➡️ `Utilities.sleep(ms)` (블로킹 방식 구동)
+  - `fetch` ➡️ `UrlFetchApp.fetch(url, options)`
+  - `crypto` ➡️ `Utilities.computeDigest()` / `Utilities.getUuid()`
+
+### 8. 할당량 및 실행 한계(Quotas) 인지 및 예외 처리
+- **실행 시간 한계**: 단일 실행당 최대 **6분** (시간 초과 시 강제 종료)
+- **일일 이메일 전송 제한**: 일반 계정 100건 / Workspace 교육 계정 1,500건
+- **외부 URL 호출 제한**: 하루 20,000건 ~ 100,000건
+- 리소스 로드 실패를 최소화하기 위해 네트워크 호출 시 `{muteHttpExceptions: true}` 옵션을 적극 고려하고 `try/catch` 문으로 감쌉니다.
+
+### 9. 진행률 표시용 모달 진행 창 패턴 (Modal Progress Dialog)
+- 실행 시간이 5초 이상 걸릴 가능성이 있는 무거운 연산(예: 대용량 데이터 분석, 다중 이메일 발송)의 경우, HTMLService 기반의 컴팩트 스피너 모달창을 열어 다중 실행을 방지하고 완료 시 자동으로 닫히도록 흐름을 제어합니다.
